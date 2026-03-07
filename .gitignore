@@ -22,8 +22,12 @@ ENV/
 # ── Vector DB (local storage — large binary files) ────────────────────────────
 vector_db/
 
-# ── Data / PDF files ──────────────────────────────────────────────────────────
+# ── Data / PDF files & archives ───────────────────────────────────────────────
 data/ncert_pdfs/*.pdf
+*.zip
+*.rar
+*.tar.gz
+*.7z
 
 # ── Streamlit cache ───────────────────────────────────────────────────────────
 .streamlit/
