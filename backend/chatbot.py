@@ -1,0 +1,229 @@
+import os
+import requests
+import json
+from dotenv import load_dotenv
+from huggingface_hub import InferenceClient
+
+load_dotenv()
+
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+# Supported answer languages
+SUPPORTED_LANGUAGES = [
+    "English",
+    "Tamil",
+    "Hindi",
+    "Telugu",
+    "Kannada",
+    "Malayalam",
+    "Marathi",
+    "Bengali",
+    "Gujarati",
+    "Punjabi",
+    "Urdu",
+]
+
+def transcribe_audio(audio_bytes: bytes) -> str:
+    """
+    Sends the microphone audio to Whisper API and returns text.
+    Uses openai/whisper-large-v3-turbo for fast multilingual STT.
+    """
+    if not HF_TOKEN or HF_TOKEN == "your_huggingface_api_token_here":
+        return "Error: HF_TOKEN missing."
+        
+    api_url = "https://router.huggingface.co/hf-inference/models/openai/whisper-large-v3-turbo"
+    headers = {
+        "Authorization": f"Bearer {HF_TOKEN}",
+        "Content-Type": "audio/flac"
+    }
+    try:
+        response = requests.post(api_url, headers=headers, data=audio_bytes)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("text", "Error processing audio")
+    except Exception as e:
+        return f"Audio Error: {str(e)}"
+
+def preprocess_query(query: str) -> dict:
+    """
+    Uses Mistral to detect language, translate the query to English,
+    classify the subject, and detect if a diagram is explicitly requested.
+    """
+    client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.2", token=HF_TOKEN)
+    
+    prompt = f"""<s>[INST] Analyze the following user question: "{query}"
+Your task is to:
+1. Detect Language (e.g., Tamil, Hindi, English, Tanglish).
+2. Translate the query into clear English.
+3. Identify Subject (Physics, Chemistry, Biology, Mathematics, General).
+4. Identify if a diagram is explicitly requested (true/false) from keywords like: diagram, draw, show, visualize, cell, circuit, heart, structure, cycle, anatomy, cross section.
+5. Extract the core scientific concept or topic name (e.g. "plant cell", "photosynthesis", "human heart", "water cycle"). Be very specific.
+
+Reply STRICTLY in JSON format with exactly these keys: "language", "translated_query", "subject", "diagram_requested", "concept".
+Example: {{"language": "English", "translated_query": "Show plant cell diagram", "subject": "Biology", "diagram_requested": true, "concept": "plant cell"}}
+[/INST]"""
+
+    try:
+        response = client.text_generation(prompt, max_new_tokens=150, temperature=0.1)
+        json_output = response.strip()
+        if "```json" in json_output:
+            json_output = json_output.split("```json")[-1].split("```")[0].strip()
+        elif "```" in json_output:
+            json_output = json_output.split("```")[-1].split("```")[0].strip()
+        # Extract only the JSON object if there is extra text
+        start = json_output.find("{")
+        end = json_output.rfind("}") + 1
+        if start != -1 and end > start:
+            json_output = json_output[start:end]
+            
+        data = json.loads(json_output)
+        return {
+            "language": data.get("language", "English"),
+            "translated_query": data.get("translated_query", query),
+            "subject": data.get("subject", "General"),
+            "diagram_requested": data.get("diagram_requested", False),
+            "concept": data.get("concept", ""),
+        }
+    except Exception:
+        # Fallback: do simple keyword detection for diagram
+        diagram_keywords = ["diagram", "draw", "show", "cell", "circuit", "heart", "structure", "visualize", "cycle", "anatomy"]
+        diagram_detected = any(kw in query.lower() for kw in diagram_keywords)
+        return {
+            "language": "Unknown",
+            "translated_query": query,
+            "subject": "General",
+            "diagram_requested": diagram_detected,
+            "concept": "",
+        }
+
+def generate_answer(context: str, user_query: str, chat_history: list, difficulty: str, metadata: dict, answer_language: str = "English") -> str:
+    """
+    Sends the retrieved context and question to Mistral.
+    Answers strictly in the `answer_language` chosen by the user.
+    """
+    if not HF_TOKEN or HF_TOKEN == "your_huggingface_api_token_here":
+        return "Error: HF_TOKEN environment variable not set or invalid."
+
+    try:
+        subject = metadata.get("subject", "General")
+        diagram_requested = metadata.get("diagram_requested", False)
+        
+        diff_instruction = (
+            "Very simple and basic explanation for younger school students."
+            if difficulty == "Beginner"
+            else "Detailed and complete explanation with rich scientific information."
+        )
+        
+        # Determine explicit diagram mode
+        diagram_mode_enforce = (
+            "User EXPLICITLY requested a diagram. Generate a Mermaid diagram."
+            if diagram_requested
+            else "Only generate a Mermaid diagram if the educational concept strictly requires one, else skip."
+        )
+        
+        # Language instruction — the MOST important rule
+        if answer_language and answer_language.lower() != "english":
+            lang_instruction = (
+                f"⚠️ CRITICAL: You MUST write your ENTIRE response in {answer_language}. "
+                f"Every word of your explanation must be in {answer_language}. "
+                f"Do NOT mix English words (except for technical/scientific proper nouns like element names, formulas). "
+                f"The student has chosen {answer_language} as their preferred language."
+            )
+        else:
+            lang_instruction = "Write your response clearly in English."
+            
+        system_instruction = (
+            f"You are a friendly teacher explaining {subject} concepts to Indian school students.\n"
+            "You MUST base educational facts ONLY on the provided NCERT textbook context.\n"
+            f"Difficulty Level: {diff_instruction}\n\n"
+            
+            f"{lang_instruction}\n\n"
+            
+            "CRITICAL RULES FOR OUTPUT:\n"
+            "1. DO NOT echo or include headers like 'Previous Conversation:', 'Current User Message:', 'Assessment:', or 'Student Question:' in your response.\n"
+            "2. Start your explanation directly.\n\n"
+            
+            "--- DIAGRAM GENERATION RULES ---\n"
+            f"{diagram_mode_enforce}\n"
+            "If generating a diagram, enclose the Mermaid code exclusively in a ```mermaid block. No other diagram formats.\n"
+            "Also provide a short explanation of its labeled parts.\n\n"
+            
+            "--- STANDARD EXPLANATION STRUCTURE ---\n"
+            "If the user asks an educational question, structure your answer as:\n\n"
+            "Definition\n[Short definition]\n\n"
+            "Explanation\n[Simple explanation]\n\n"
+            "Examples\n[Real-life examples]\n\n"
+            "Formula / Solving Steps\n[Provide formula or math steps 1,2,3 if applicable, else omit]"
+        )
+
+        history_text = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history[-3:]])
+        
+        user_content = (
+            f"Context from Textbooks:\n{context}\n\n"
+            f"Chat History Context:\n{history_text}\n\n"
+            f"Question:\n{user_query}\n"
+        )
+
+        client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.2", token=HF_TOKEN)
+        
+        response = client.chat_completion(
+            messages=[
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": user_content}
+            ],
+            max_tokens=800,
+            temperature=0.2
+        )
+        
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        return f"API Connection Error: {str(e)}"
+
+def ask_chatbot(question: str, retriever, chat_history: list, difficulty: str, answer_language: str = "English") -> dict:
+    """
+    RAG pipeline: detects subject/translates -> retrieves -> memory -> API response.
+    Returns a dict containing response and metadata.
+    answer_language: the language the model should reply in (user's choice).
+    """
+    try:
+        # Preprocess the query to translate and find subject
+        metadata = preprocess_query(question)
+        translated_q = metadata["translated_query"]
+        
+        # Store the chosen answer language in metadata for display
+        metadata["answer_language"] = answer_language
+        
+        # 1. Retrieve relevant NCERT chunks based on translated English question
+        docs = retriever.invoke(translated_q)
+        
+        if not docs:
+            response = "I am not fully sure. Please check your NCERT textbook."
+            return {"response": response, "metadata": metadata}
+            
+        # 2. Extract context
+        context = "\n\n".join([f"Document Part:\n{doc.page_content}" for doc in docs])
+        
+        # 3. Fetch accurate web image/diagram if explicitly requested
+        if metadata.get("diagram_requested"):
+            from backend.image_search import get_image_url
+            
+            concept = metadata.get("concept", "").strip()
+            subject = metadata.get("subject", "General")
+
+            if concept:
+                # Use a targeted multi-keyword search for relevance
+                search_query = f"{concept} {subject} diagram"
+            else:
+                search_query = f"{translated_q} diagram"
+            
+            img_url = get_image_url(search_query, concept=concept)
+            if img_url:
+                metadata["web_image_url"] = img_url
+        
+        # 4. Generate answer in the user's chosen language
+        response_text = generate_answer(context, question, chat_history, difficulty, metadata, answer_language)
+        return {"response": response_text, "metadata": metadata}
+        
+    except Exception as e:
+        return {"response": f"System Error Occurred: {str(e)}", "metadata": {}}
