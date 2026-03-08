@@ -88,76 +88,61 @@ Example: {{"language": "English", "translated_query": "What is photosynthesis?",
 
 def generate_answer(context: str, user_query: str, chat_history: list, difficulty: str, metadata: dict, answer_language: str = "English") -> str:
     """
-    Sends the retrieved NCERT context and question to Mistral.
-    Answers strictly in the `answer_language` chosen by the user.
+    Sends the retrieved NCERT context and question to Mistral via text_generation.
+    Uses [INST] format which works on HF free inference tier.
     """
     if not HF_TOKEN or HF_TOKEN == "your_huggingface_api_token_here":
         return "Error: HF_TOKEN environment variable not set or invalid."
 
     try:
         subject = metadata.get("subject", "General")
-        
+
         diff_instruction = (
             "Very simple and basic explanation for younger school students."
             if difficulty == "Beginner"
             else "Detailed and complete explanation with rich scientific information."
         )
-        
-        # Language instruction — the MOST important rule
+
         if answer_language and answer_language.lower() != "english":
             lang_instruction = (
-                f"⚠️ CRITICAL: You MUST write your ENTIRE response in {answer_language}. "
-                f"Every word of your explanation must be in {answer_language}. "
-                f"Do NOT mix English words (except for technical/scientific proper nouns like element names, formulas). "
-                f"The student has chosen {answer_language} as their preferred language."
+                f"CRITICAL: Write your ENTIRE response in {answer_language}. "
+                f"Every word must be in {answer_language}. "
+                f"Only keep technical/scientific terms (formulas, element names) in English."
             )
         else:
             lang_instruction = "Write your response clearly in English."
-            
-        system_instruction = (
-            f"You are a friendly teacher explaining {subject} concepts to Indian school students.\n"
-            "You MUST base your answer ONLY on the provided NCERT textbook context below. "
-            "Do NOT add information that is not present in the context.\n"
-            f"Difficulty Level: {diff_instruction}\n\n"
-            
-            f"{lang_instruction}\n\n"
-            
-            "CRITICAL RULES FOR OUTPUT:\n"
-            "1. DO NOT echo or include headers like 'Previous Conversation:', 'Current User Message:', 'Assessment:', or 'Student Question:' in your response.\n"
-            "2. Start your explanation directly.\n"
-            "3. Base every fact strictly on the NCERT textbook context provided. If the answer is not in the context, say so clearly.\n\n"
-            
-            "--- STANDARD EXPLANATION STRUCTURE ---\n"
-            "If the user asks an educational question, structure your answer as:\n\n"
-            "Definition\n[Short definition from the textbook]\n\n"
-            "Explanation\n[Simple explanation based on the textbook]\n\n"
-            "Examples\n[Real-life examples if mentioned in the textbook]\n\n"
-            "Formula / Solving Steps\n[Provide formula or math steps 1,2,3 if applicable, else omit]"
-        )
 
-        history_text = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history[-3:]])
-        
-        user_content = (
-            f"Context from Textbooks:\n{context}\n\n"
-            f"Chat History Context:\n{history_text}\n\n"
-            f"Question:\n{user_query}\n"
+        history_text = "\n".join([
+            f"{msg['role'].capitalize()}: {msg['content']}"
+            for msg in chat_history[-3:]
+        ])
+
+        # Build Mistral [INST] format prompt
+        full_prompt = (
+            f"<s>[INST] You are a friendly NCERT teacher for Indian school students.\n"
+            f"Subject: {subject} | Difficulty: {diff_instruction}\n"
+            f"{lang_instruction}\n\n"
+            "RULES:\n"
+            "- Answer ONLY using the NCERT context provided below.\n"
+            "- Start your explanation directly. No headers like 'Previous Conversation'.\n"
+            "- Structure: Definition -> Explanation -> Examples -> Formula (if needed).\n\n"
+            f"NCERT Context:\n{context}\n\n"
+            f"Recent Chat:\n{history_text}\n\n"
+            f"Student Question: {user_query} [/INST]"
         )
 
         client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
-        
-        response = client.chat_completion(
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_content}
-            ],
-            max_tokens=800,
-            temperature=0.2
+        response = client.text_generation(
+            full_prompt,
+            max_new_tokens=800,
+            temperature=0.2,
+            do_sample=True,
         )
-        
-        return response.choices[0].message.content.strip()
+        return response.strip()
 
     except Exception as e:
         return f"API Connection Error: {str(e)}"
+
 
 def ask_chatbot(question: str, retriever, chat_history: list, difficulty: str, answer_language: str = "English") -> dict:
     """
