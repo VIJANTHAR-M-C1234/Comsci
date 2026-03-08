@@ -49,7 +49,7 @@ def preprocess_query(query: str) -> dict:
     Uses Mistral to detect language, translate the query to English,
     and classify the subject.
     """
-    client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.2", token=HF_TOKEN)
+    client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
     
     prompt = f"""<s>[INST] Analyze the following user question: "{query}"
 Your task is to:
@@ -143,7 +143,7 @@ def generate_answer(context: str, user_query: str, chat_history: list, difficult
             f"Question:\n{user_query}\n"
         )
 
-        client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.2", token=HF_TOKEN)
+        client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
         
         response = client.chat_completion(
             messages=[
