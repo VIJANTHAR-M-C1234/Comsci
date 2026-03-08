@@ -5,8 +5,12 @@ import os
 # Add the project root to sys.path so we can import backend packages correctly
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.retriever import get_retriever, get_connection_info
-from backend.chatbot import ask_chatbot, transcribe_audio, SUPPORTED_LANGUAGES
+try:
+    from backend.retriever import get_retriever, get_connection_info
+    from backend.chatbot import ask_chatbot, transcribe_audio, SUPPORTED_LANGUAGES
+except Exception as _import_err:
+    st.error(f"Startup import error: {_import_err}")
+    st.stop()
 
 # Page configuration
 st.set_page_config(
@@ -131,9 +135,23 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "How can I help you today?", "metadata": {}}
     ]
 
-# Cache connection info once so it never disappears during re-renders
+# Show static connection info (no live connection at startup)
 if "conn_info" not in st.session_state:
-    st.session_state.conn_info = get_connection_info()
+    import os
+    chroma_db = os.getenv("CHROMA_DATABASE", "").strip().strip("'\"")
+    chroma_tenant = os.getenv("CHROMA_TENANT", "")
+    if chroma_db and chroma_tenant:
+        st.session_state.conn_info = {
+            "mode": "Chroma Cloud",
+            "detail": f"Tenant: {chroma_tenant} | DB: {chroma_db}",
+            "is_cloud": True,
+        }
+    else:
+        st.session_state.conn_info = {
+            "mode": "Local (Persistent)",
+            "detail": "Using local vector_db folder",
+            "is_cloud": False,
+        }
 
 # ----------------- SIDEBAR -----------------
 with st.sidebar:
