@@ -1,3 +1,15 @@
+---
+title: NCERT AI Assistant
+emoji: 🤖
+colorFrom: blue
+colorTo: green
+sdk: streamlit
+sdk_version: 1.32.0
+app_file: frontend/app.py
+pinned: false
+license: mit
+---
+
 # AI-01 – Hinglish / Tanglish NCERT Doubt-Clearing Chatbot.
 
 An educational AI system that helps school students (Class 6 - 12) solve their NCERT textbook doubts. The chatbot uses Retrieval-Augmented Generation (RAG) and open-source models remotely on Hugging Face using the Inference API. It supports mixed languages like Hinglish and Tanglish.
