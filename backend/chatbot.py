@@ -44,15 +44,17 @@ def transcribe_audio(audio_bytes: bytes) -> str:
     except Exception as e:
         return f"Audio Error: {str(e)}"
 
-# Model used for all inference — works on all free HF accounts
-MODEL_ID = "HuggingFaceH4/zephyr-7b-beta"
+# Model used for all inference
+# provider='hf-inference' forces HF's own servers, bypassing provider routing
+MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.3"
+PROVIDER = "hf-inference"
 
 def preprocess_query(query: str) -> dict:
     """
     Uses Zephyr to detect language, translate query to English,
     and classify the subject.
     """
-    client = InferenceClient(MODEL_ID, token=HF_TOKEN)
+    client = InferenceClient(MODEL_ID, token=HF_TOKEN, provider=PROVIDER)
 
     messages = [
         {
@@ -141,7 +143,7 @@ def generate_answer(context: str, user_query: str, chat_history: list, difficult
             f"Student Question: {user_query}"
         )
 
-        client = InferenceClient(MODEL_ID, token=HF_TOKEN)
+        client = InferenceClient(MODEL_ID, token=HF_TOKEN, provider=PROVIDER)
         response = client.chat_completion(
             messages=[
                 {"role": "system", "content": system_msg},
