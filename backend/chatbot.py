@@ -46,18 +46,31 @@ def transcribe_audio(audio_bytes: bytes) -> str:
 
 MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 
-def preprocess_query(query: str) -> dict:
+def preprocess_query(query: str, chat_history: list = None) -> dict:
     """
-    Detects language, translates to English, classifies subject.
+    Detects language, translates to English, rewrites query using history, classifies subject.
     """
     client = InferenceClient(model=MODEL_ID, token=HF_TOKEN)
     
+    history_text = "No history."
+    if chat_history:
+        # Get just the last 2 interactions excluding the immediate new query if it's there
+        history_text = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history[-3:-1] if msg['role'] != 'system'])
+        if not history_text:
+            history_text = "No history."
+            
     system_prompt = (
-        "You are a language detection assistant. "
-        "Reply ONLY with a valid JSON object with exactly these keys: \"language\", \"translated_query\", \"subject\". "
-        "Subject must be one of: Physics, Chemistry, Biology, Mathematics, General."
+        "You are a language detection and query rewriting assistant.\n"
+        "1. Rewrite the student's question into a standalone English query by resolving pronouns (like 'it', 'they') using the Recent Chat History.\n"
+        "2. Detect the original language.\n"
+        "3. Classify the subject (Physics, Chemistry, Biology, Mathematics, or General).\n"
+        "Reply ONLY with a valid JSON object with exactly these keys: \"language\", \"translated_query\", \"subject\"."
     )
-    user_prompt = f"Analyze this question: \"{query}\"\nExample output: {{\"language\": \"English\", \"translated_query\": \"What is photosynthesis?\", \"subject\": \"Biology\"}}"
+    user_prompt = (
+        f"Recent Chat History:\n{history_text}\n\n"
+        f"Student Question: \"{query}\"\n\n"
+        "Example output: {\"language\": \"English\", \"translated_query\": \"What is photosynthesis?\", \"subject\": \"Biology\"}"
+    )
 
     try:
         response = client.chat_completion(
@@ -158,8 +171,8 @@ def ask_chatbot(question: str, retriever, chat_history: list, difficulty: str, a
     answer_language: the language the model should reply in (user's choice).
     """
     try:
-        # Preprocess the query to translate and find subject
-        metadata = preprocess_query(question)
+        # Preprocess the query to translate and find subject, rewrite pronouns via history
+        metadata = preprocess_query(question, chat_history)
         translated_q = metadata["translated_query"]
         
         # Store the chosen answer language in metadata for display
