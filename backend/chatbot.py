@@ -44,35 +44,43 @@ def transcribe_audio(audio_bytes: bytes) -> str:
     except Exception as e:
         return f"Audio Error: {str(e)}"
 
+# Model used for all inference — works on all free HF accounts
+MODEL_ID = "HuggingFaceH4/zephyr-7b-beta"
+
 def preprocess_query(query: str) -> dict:
     """
-    Uses Mistral to detect language, translate the query to English,
+    Uses Zephyr to detect language, translate query to English,
     and classify the subject.
     """
-    client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
-    
-    prompt = f"""<s>[INST] Analyze the following user question: "{query}"
-Your task is to:
-1. Detect Language (e.g., Tamil, Hindi, English, Tanglish).
-2. Translate the query into clear English.
-3. Identify Subject (Physics, Chemistry, Biology, Mathematics, General).
+    client = InferenceClient(MODEL_ID, token=HF_TOKEN)
 
-Reply STRICTLY in JSON format with exactly these keys: "language", "translated_query", "subject".
-Example: {{"language": "English", "translated_query": "What is photosynthesis?", "subject": "Biology"}}
-[/INST]"""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                'You are a language detection assistant. '
+                'Reply ONLY with a JSON object with keys: "language", "translated_query", "subject". '
+                'Subject must be one of: Physics, Chemistry, Biology, Mathematics, General. '
+                'Example: {"language": "English", "translated_query": "What is photosynthesis?", "subject": "Biology"}'
+            )
+        },
+        {
+            "role": "user",
+            "content": f'Analyze this question: "{query}"'
+        }
+    ]
 
     try:
-        response = client.text_generation(prompt, max_new_tokens=100, temperature=0.1)
-        json_output = response.strip()
+        response = client.chat_completion(messages=messages, max_tokens=120, temperature=0.1)
+        json_output = response.choices[0].message.content.strip()
         if "```json" in json_output:
             json_output = json_output.split("```json")[-1].split("```")[0].strip()
         elif "```" in json_output:
-            json_output = json_output.split("```")[-1].split("```")[0].strip()
+            json_output = json_output.split("```")[1].strip()
         start = json_output.find("{")
         end = json_output.rfind("}") + 1
         if start != -1 and end > start:
             json_output = json_output[start:end]
-            
         data = json.loads(json_output)
         return {
             "language": data.get("language", "English"),
@@ -88,8 +96,8 @@ Example: {{"language": "English", "translated_query": "What is photosynthesis?",
 
 def generate_answer(context: str, user_query: str, chat_history: list, difficulty: str, metadata: dict, answer_language: str = "English") -> str:
     """
-    Sends the retrieved NCERT context and question to Mistral via text_generation.
-    Uses [INST] format which works on HF free inference tier.
+    Generates answer using zephyr-7b-beta via chat_completion.
+    Zephyr is a true chat model available on all free HF accounts.
     """
     if not HF_TOKEN or HF_TOKEN == "your_huggingface_api_token_here":
         return "Error: HF_TOKEN environment variable not set or invalid."
@@ -98,50 +106,55 @@ def generate_answer(context: str, user_query: str, chat_history: list, difficult
         subject = metadata.get("subject", "General")
 
         diff_instruction = (
-            "Very simple and basic explanation for younger school students."
+            "Use very simple language for younger school students."
             if difficulty == "Beginner"
-            else "Detailed and complete explanation with rich scientific information."
+            else "Give a detailed explanation with scientific depth."
         )
 
         if answer_language and answer_language.lower() != "english":
             lang_instruction = (
-                f"CRITICAL: Write your ENTIRE response in {answer_language}. "
-                f"Every word must be in {answer_language}. "
-                f"Only keep technical/scientific terms (formulas, element names) in English."
+                f"IMPORTANT: Write your ENTIRE answer in {answer_language}. "
+                f"Only technical terms like formulas and element names may stay in English."
             )
         else:
-            lang_instruction = "Write your response clearly in English."
+            lang_instruction = "Write your response in clear English."
 
         history_text = "\n".join([
             f"{msg['role'].capitalize()}: {msg['content']}"
             for msg in chat_history[-3:]
         ])
 
-        # Build Mistral [INST] format prompt
-        full_prompt = (
-            f"<s>[INST] You are a friendly NCERT teacher for Indian school students.\n"
-            f"Subject: {subject} | Difficulty: {diff_instruction}\n"
+        system_msg = (
+            f"You are a friendly NCERT teacher for Indian school students.\n"
+            f"Subject: {subject}. {diff_instruction}\n"
             f"{lang_instruction}\n\n"
             "RULES:\n"
-            "- Answer ONLY using the NCERT context provided below.\n"
-            "- Start your explanation directly. No headers like 'Previous Conversation'.\n"
-            "- Structure: Definition -> Explanation -> Examples -> Formula (if needed).\n\n"
-            f"NCERT Context:\n{context}\n\n"
-            f"Recent Chat:\n{history_text}\n\n"
-            f"Student Question: {user_query} [/INST]"
+            "- Answer ONLY from the NCERT context below. Do not add outside information.\n"
+            "- Start your answer directly. No meta-headers.\n"
+            "- Structure: Definition -> Explanation -> Examples -> Formula (if needed).\n"
+            "- If the answer is not in the context, say so clearly."
         )
 
-        client = InferenceClient("mistralai/Mistral-7B-Instruct-v0.3", token=HF_TOKEN)
-        response = client.text_generation(
-            full_prompt,
-            max_new_tokens=800,
-            temperature=0.2,
-            do_sample=True,
+        user_msg = (
+            f"NCERT Context:\n{context}\n\n"
+            f"Recent Chat:\n{history_text}\n\n"
+            f"Student Question: {user_query}"
         )
-        return response.strip()
+
+        client = InferenceClient(MODEL_ID, token=HF_TOKEN)
+        response = client.chat_completion(
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user",   "content": user_msg},
+            ],
+            max_tokens=800,
+            temperature=0.2,
+        )
+        return response.choices[0].message.content.strip()
 
     except Exception as e:
         return f"API Connection Error: {str(e)}"
+
 
 
 def ask_chatbot(question: str, retriever, chat_history: list, difficulty: str, answer_language: str = "English") -> dict:
