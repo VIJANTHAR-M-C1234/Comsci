@@ -10,9 +10,9 @@ load_dotenv()
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "vector_db")
 
 # ─── Chroma Cloud credentials (from .env) ──────────────────────────────────────
-CHROMA_API_KEY  = os.getenv("CHROMA_API_KEY", "")
-CHROMA_TENANT   = os.getenv("CHROMA_TENANT", "")
-CHROMA_DATABASE = os.getenv("CHROMA_DATABASE", "")
+CHROMA_API_KEY  = os.getenv("CHROMA_API_KEY", "").strip()
+CHROMA_TENANT   = os.getenv("CHROMA_TENANT", "").strip()
+CHROMA_DATABASE = os.getenv("CHROMA_DATABASE", "").strip().strip("'\"")
 COLLECTION_NAME = "ncert_docs"
 
 
