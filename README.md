@@ -1,49 +1,33 @@
-https://huggingface.co/spaces/Parasuramane24/NCERT-AI-Assistant
-The website is avaliable through this Link ...☝🏻
 ---
 title: NCERT AI Assistant
 emoji: 🤖
 colorFrom: blue
 colorTo: green
-sdk: streamlit
-sdk_version: 1.32.0
-app_file: frontend/app.py
+sdk: docker
+app_port: 7860
 pinned: false
 license: mit
 ---
 
-# AI-01 – Hinglish / Tanglish NCERT Doubt-Clearing Chatbot.
+# NCERT AI Assistant
 
-An educational AI system that helps school students (Class 6 - 12) solve their NCERT textbook doubts. The chatbot uses Retrieval-Augmented Generation (RAG) and open-source models remotely on Hugging Face using the Inference API. It supports mixed languages like Hinglish and Tanglish.
+An educational AI system that helps school students (Class 6–12) solve their NCERT textbook doubts.
+The chatbot uses Retrieval-Augmented Generation (RAG) powered by **Qwen2.5-7B-Instruct** via Hugging Face Inference API.
+It supports multiple Indian languages like Tamil, Hindi, Telugu, Kannada, and more.
 
-## Setup Instructions
+👉 **[Live App](https://huggingface.co/spaces/Parasuramane24/NCERT-AI-Assistant)**
 
-1. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Set up Environment Variables**
-   Create a `.env` file in the root directory and add your Hugging Face API Token:
-   ```env
-   HF_TOKEN=your_token_here
-   ```
-
-3. **Ingest NCERT PDFs**
-   Place your NCERT PDF files into the `data/ncert_pdfs/` directory. Then run the ingestion script:
-   ```bash
-   python backend/ingest.py
-   ```
-   This will extract text, chunk it, request embeddings from Hugging Face, and store the vectors in the `vector_db/` directory.
-
-4. **Run the Chatbot Application**
-   Start the Streamlit UI:
-   ```bash
-   streamlit run frontend/app.py
-   ```
+## Features
+- 🔍 Context-aware RAG retrieval from NCERT textbooks (Class 6–12)
+- 🌐 Multilingual support (Tamil, Hindi, Telugu, Kannada, Malayalam, etc.)
+- 🧠 Conversational memory — resolves pronouns across multiple questions
+- 📚 Subjects: Physics, Chemistry, Biology, Mathematics, General
+- 🎤 Voice input (Whisper STT)
+- 🎓 Difficulty modes: Beginner / Advanced
 
 ## Architecture
+- **LLM**: `Qwen/Qwen2.5-7B-Instruct`
 - **Embedding Model**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
-- **LLM**: `mistralai/Mistral-7B-Instruct-v0.2`
-- **Vector DB**: Chroma
+- **Vector DB**: Chroma Cloud
 - **Frontend**: Streamlit
+- **Deployment**: Hugging Face Docker Space
