@@ -1,5 +1,6 @@
 import os
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
 
 # Add project root to path for execution as script 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -47,9 +48,9 @@ if __name__ == "__main__":
     from backend.retriever import store_chunks, get_connection_info
 
     conn = get_connection_info()
-    print(f"\n[ingest] Target database: {conn['mode']} — {conn['detail']}\n")
+    print(f"\n[ingest] Target database: {conn['mode']} - {conn['detail']}\n")
 
     chunks = load_and_chunk_pdfs()
     if chunks:
         store_chunks(chunks)
-        print(f"\n✅ Vector database ingestion completed successfully into {conn['mode']}.")
+        print(f"\n[OK] Vector database ingestion completed successfully into {conn['mode']}.")

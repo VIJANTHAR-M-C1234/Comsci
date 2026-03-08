@@ -28,16 +28,16 @@ def get_chroma_client():
     - Falls back to local PersistentClient otherwise.
     """
     if _is_cloud_configured():
-        print("[retriever] 🌐 Connecting to Chroma Cloud...")
+        print("[retriever] Connecting to Chroma Cloud...")
         client = chromadb.CloudClient(
             tenant=CHROMA_TENANT,
             database=CHROMA_DATABASE,
             api_key=CHROMA_API_KEY,
         )
-        print("[retriever] ✅ Connected to Chroma Cloud.")
+        print("[retriever] Connected to Chroma Cloud.")
         return client, "cloud"
     else:
-        print("[retriever] 💾 Using local Chroma (persistent).")
+        print("[retriever] Using local Chroma (persistent).")
         client = chromadb.PersistentClient(path=DB_DIR)
         return client, "local"
 
@@ -73,7 +73,7 @@ def store_chunks(chunks):
         print(f"  Batch {i // batch_size + 1}/{(len(chunks) + batch_size - 1) // batch_size}...")
         vector_store.add_documents(batch)
 
-    print(f"[retriever] ✅ Successfully stored chunks into Chroma ({mode}).")
+    print(f"[retriever] Successfully stored chunks into Chroma ({mode}).")
 
 
 def get_retriever():
