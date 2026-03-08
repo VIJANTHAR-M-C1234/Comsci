@@ -44,18 +44,41 @@ def transcribe_audio(audio_bytes: bytes) -> str:
     except Exception as e:
         return f"Audio Error: {str(e)}"
 
-# Model used for all inference
-# provider='hf-inference' forces HF's own servers, bypassing provider routing
-MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.3"
-PROVIDER = "hf-inference"
+# ── Legacy HF Inference API (bypasses provider router — no account setup needed) ──
+HF_API_BASE = "https://api-inference.huggingface.co/models"
+MODEL_ID    = "mistralai/Mistral-7B-Instruct-v0.3"
+HF_API_URL  = f"{HF_API_BASE}/{MODEL_ID}"
+
+
+def _call_hf_api(prompt: str, max_new_tokens: int = 800, temperature: float = 0.2) -> str:
+    """
+    Direct POST to legacy HF Inference API.
+    Bypasses InferenceClient provider routing — works on ALL free HF accounts.
+    """
+    headers = {"Authorization": f"Bearer {HF_TOKEN}", "Content-Type": "application/json"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+            "return_full_text": False,
+            "do_sample": True,
+        },
+        "options": {"wait_for_model": True},
+    }
+    resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=120)
+    resp.raise_for_status()
+    result = resp.json()
+    if isinstance(result, list) and result:
+        return result[0].get("generated_text", "").strip()
+    raise ValueError(f"Unexpected API response: {result}")
+
 
 def preprocess_query(query: str) -> dict:
     """
     Detects language, translates to English, classifies subject.
-    Uses text_generation with Mistral [INST] format (works on hf-inference).
+    Uses direct HF API POST — no provider needed.
     """
-    client = InferenceClient(MODEL_ID, token=HF_TOKEN, provider=PROVIDER)
-
     prompt = (
         f'<s>[INST] You are a language detection assistant. '
         f'Analyze this question: "{query}"\n'
@@ -63,10 +86,8 @@ def preprocess_query(query: str) -> dict:
         'Subject must be one of: Physics, Chemistry, Biology, Mathematics, General.\n'
         'Example: {"language": "English", "translated_query": "What is photosynthesis?", "subject": "Biology"} [/INST]'
     )
-
     try:
-        response = client.text_generation(prompt, max_new_tokens=120, temperature=0.1)
-        json_output = response.strip()
+        json_output = _call_hf_api(prompt, max_new_tokens=120, temperature=0.1)
         if "```json" in json_output:
             json_output = json_output.split("```json")[-1].split("```")[0].strip()
         elif "```" in json_output:
@@ -82,20 +103,16 @@ def preprocess_query(query: str) -> dict:
             "subject": data.get("subject", "General"),
         }
     except Exception:
-        return {
-            "language": "Unknown",
-            "translated_query": query,
-            "subject": "General",
-        }
+        return {"language": "Unknown", "translated_query": query, "subject": "General"}
 
 
 def generate_answer(context: str, user_query: str, chat_history: list, difficulty: str, metadata: dict, answer_language: str = "English") -> str:
     """
-    Generates answer using zephyr-7b-beta via chat_completion.
-    Zephyr is a true chat model available on all free HF accounts.
+    Generates NCERT answer via direct HF Inference API POST.
+    No provider router — works on all free HF accounts.
     """
     if not HF_TOKEN or HF_TOKEN == "your_huggingface_api_token_here":
-        return "Error: HF_TOKEN environment variable not set or invalid."
+        return "Error: HF_TOKEN not set."
 
     try:
         subject = metadata.get("subject", "General")
@@ -106,27 +123,25 @@ def generate_answer(context: str, user_query: str, chat_history: list, difficult
             else "Give a detailed explanation with scientific depth."
         )
 
-        if answer_language and answer_language.lower() != "english":
-            lang_instruction = (
-                f"IMPORTANT: Write your ENTIRE answer in {answer_language}. "
-                f"Only technical terms and formulas may stay in English."
-            )
-        else:
-            lang_instruction = "Write your response in clear English."
+        lang_instruction = (
+            f"IMPORTANT: Write your ENTIRE answer in {answer_language}. "
+            "Only technical terms and formulas may stay in English."
+            if answer_language and answer_language.lower() != "english"
+            else "Write your response in clear English."
+        )
 
         history_text = "\n".join([
             f"{msg['role'].capitalize()}: {msg['content']}"
             for msg in chat_history[-3:]
         ])
 
-        # Mistral [INST] format — works with text_generation on hf-inference
         full_prompt = (
             f"<s>[INST] You are a friendly NCERT teacher for Indian school students.\n"
             f"Subject: {subject}. {diff_instruction}\n"
             f"{lang_instruction}\n\n"
             "RULES:\n"
             "- Answer ONLY from the NCERT context below.\n"
-            "- Start directly. No meta-headers like 'Previous Conversation'.\n"
+            "- Start directly. Do not repeat the question or add meta-headers.\n"
             "- Structure: Definition -> Explanation -> Examples -> Formula (if needed).\n"
             "- If the answer is not in the context, say so clearly.\n\n"
             f"NCERT Context:\n{context}\n\n"
@@ -134,14 +149,7 @@ def generate_answer(context: str, user_query: str, chat_history: list, difficult
             f"Student Question: {user_query} [/INST]"
         )
 
-        client = InferenceClient(MODEL_ID, token=HF_TOKEN, provider=PROVIDER)
-        response = client.text_generation(
-            full_prompt,
-            max_new_tokens=800,
-            temperature=0.2,
-            do_sample=True,
-        )
-        return response.strip()
+        return _call_hf_api(full_prompt, max_new_tokens=800, temperature=0.2)
 
     except Exception as e:
         return f"API Connection Error: {str(e)}"
