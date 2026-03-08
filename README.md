@@ -1,3 +1,5 @@
+https://huggingface.co/spaces/Parasuramane24/NCERT-AI-Assistant
+The website is avaliable through this Link ...☝🏻
 ---
 title: NCERT AI Assistant
 emoji: 🤖
