@@ -44,9 +44,9 @@ def transcribe_audio(audio_bytes: bytes) -> str:
     except Exception as e:
         return f"Audio Error: {str(e)}"
 
-# ── Legacy HF Inference API (bypasses provider router — no account setup needed) ──
-HF_API_BASE = "https://api-inference.huggingface.co/models"
-MODEL_ID    = "HuggingFaceH4/zephyr-7b-beta"
+# ── New HF Inference Router (replaces api-inference.huggingface.co) ──
+HF_API_BASE = "https://router.huggingface.co/hf-inference/models"
+MODEL_ID    = "google/gemma-2-2b-it"
 HF_API_URL  = f"{HF_API_BASE}/{MODEL_ID}"
 
 
@@ -80,11 +80,13 @@ def preprocess_query(query: str) -> dict:
     Uses direct HF API POST — no provider needed.
     """
     prompt = (
-        f"<|system|>\nYou are a language detection assistant. "
+        "<start_of_turn>user\n"
+        "You are a language detection assistant. "
+        "Analyze this question: \"" + query + "\"\n"
         "Reply ONLY with a valid JSON object with exactly these keys: \"language\", \"translated_query\", \"subject\". "
-        "Subject must be one of: Physics, Chemistry, Biology, Mathematics, General.</s>\n"
-        f"<|user|>\nAnalyze this question: \"{query}\"</s>\n"
-        "<|assistant|>\n"
+        "Subject must be one of: Physics, Chemistry, Biology, Mathematics, General. "
+        "Example: {\"language\": \"English\", \"translated_query\": \"What is photosynthesis?\", \"subject\": \"Biology\"}<end_of_turn>\n"
+        "<start_of_turn>model\n"
     )
     try:
         json_output = _call_hf_api(prompt, max_new_tokens=120, temperature=0.1)
@@ -135,22 +137,21 @@ def generate_answer(context: str, user_query: str, chat_history: list, difficult
             for msg in chat_history[-3:]
         ])
 
-        # Zephyr Chat Format — works with text_generation on free legacy API
+        # Gemma-2 Chat Format — works on new HF Inference Router
         full_prompt = (
-            f"<|system|>\n"
-            f"You are a friendly NCERT teacher for Indian school students.\n"
+            "<start_of_turn>user\n"
+            "You are a friendly NCERT teacher for Indian school students.\n"
             f"Subject: {subject}. {diff_instruction}\n"
             f"{lang_instruction}\n\n"
             "RULES:\n"
             "- Answer ONLY from the NCERT context provided.\n"
-            "- Start directly. Do not repeat the question.\n"
+            "- Start directly. Do not repeat the question or add chat headers.\n"
             "- Structure: Definition -> Explanation -> Examples -> Formula (if needed).\n"
-            "- If the answer is not in the context, say so clearly.</s>\n"
-            f"<|user|>\n"
+            "- If the answer is not in the context, say so clearly.\n\n"
             f"NCERT Context:\n{context}\n\n"
             f"Recent Chat History:\n{history_text}\n\n"
-            f"Question: {user_query}</s>\n"
-            f"<|assistant|>\n"
+            f"Question: {user_query}<end_of_turn>\n"
+            "<start_of_turn>model\n"
         )
 
         return _call_hf_api(full_prompt, max_new_tokens=800, temperature=0.2)
