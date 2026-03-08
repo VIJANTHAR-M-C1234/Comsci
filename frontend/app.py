@@ -233,13 +233,6 @@ for message in st.session_state.messages:
             st.markdown(pills_html, unsafe_allow_html=True)
         
         st.markdown(message["content"])
-        
-        # Check if we should render a diagram for this response
-        if message.get("metadata") and "web_image_url" in message["metadata"]:
-            img_url = message["metadata"]["web_image_url"]
-            concept = message["metadata"].get("concept", "") or message["metadata"].get("subject", "Educational")
-            if img_url:
-                st.image(img_url, caption=f"📚 {concept.title()} – Educational Diagram")
                     
 # Determine prompt from Audio OR Text Input
 prompt_text = None
@@ -297,13 +290,6 @@ if prompt_text:
                     st.markdown(pills_html, unsafe_allow_html=True)
                 
                 st.markdown(response_text)
-                
-                # Check if we should render a diagram
-                if metadata and "web_image_url" in metadata:
-                    img_url = metadata["web_image_url"]
-                    concept = metadata.get("concept", "") or metadata.get("subject", "Educational")
-                    if img_url:
-                        st.image(img_url, caption=f"📚 {concept.title()} – Educational Diagram")
                 
     # Store assistant response in history
     st.session_state.messages.append({"role": "assistant", "content": response_text, "metadata": metadata})
