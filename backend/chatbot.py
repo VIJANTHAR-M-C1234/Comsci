@@ -46,7 +46,7 @@ def transcribe_audio(audio_bytes: bytes) -> str:
 
 # ── Legacy HF Inference API (bypasses provider router — no account setup needed) ──
 HF_API_BASE = "https://api-inference.huggingface.co/models"
-MODEL_ID    = "mistralai/Mistral-7B-Instruct-v0.3"
+MODEL_ID    = "HuggingFaceH4/zephyr-7b-beta"
 HF_API_URL  = f"{HF_API_BASE}/{MODEL_ID}"
 
 
@@ -80,11 +80,11 @@ def preprocess_query(query: str) -> dict:
     Uses direct HF API POST — no provider needed.
     """
     prompt = (
-        f'<s>[INST] You are a language detection assistant. '
-        f'Analyze this question: "{query}"\n'
-        'Reply ONLY with a valid JSON object with exactly these keys: "language", "translated_query", "subject".\n'
-        'Subject must be one of: Physics, Chemistry, Biology, Mathematics, General.\n'
-        'Example: {"language": "English", "translated_query": "What is photosynthesis?", "subject": "Biology"} [/INST]'
+        f"<|system|>\nYou are a language detection assistant. "
+        "Reply ONLY with a valid JSON object with exactly these keys: \"language\", \"translated_query\", \"subject\". "
+        "Subject must be one of: Physics, Chemistry, Biology, Mathematics, General.</s>\n"
+        f"<|user|>\nAnalyze this question: \"{query}\"</s>\n"
+        "<|assistant|>\n"
     )
     try:
         json_output = _call_hf_api(prompt, max_new_tokens=120, temperature=0.1)
@@ -135,18 +135,22 @@ def generate_answer(context: str, user_query: str, chat_history: list, difficult
             for msg in chat_history[-3:]
         ])
 
+        # Zephyr Chat Format — works with text_generation on free legacy API
         full_prompt = (
-            f"<s>[INST] You are a friendly NCERT teacher for Indian school students.\n"
+            f"<|system|>\n"
+            f"You are a friendly NCERT teacher for Indian school students.\n"
             f"Subject: {subject}. {diff_instruction}\n"
             f"{lang_instruction}\n\n"
             "RULES:\n"
-            "- Answer ONLY from the NCERT context below.\n"
-            "- Start directly. Do not repeat the question or add meta-headers.\n"
+            "- Answer ONLY from the NCERT context provided.\n"
+            "- Start directly. Do not repeat the question.\n"
             "- Structure: Definition -> Explanation -> Examples -> Formula (if needed).\n"
-            "- If the answer is not in the context, say so clearly.\n\n"
+            "- If the answer is not in the context, say so clearly.</s>\n"
+            f"<|user|>\n"
             f"NCERT Context:\n{context}\n\n"
-            f"Recent Chat:\n{history_text}\n\n"
-            f"Student Question: {user_query} [/INST]"
+            f"Recent Chat History:\n{history_text}\n\n"
+            f"Question: {user_query}</s>\n"
+            f"<|assistant|>\n"
         )
 
         return _call_hf_api(full_prompt, max_new_tokens=800, temperature=0.2)
